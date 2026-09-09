@@ -1,0 +1,214 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { invite, type InviteBody } from '../api/endpoints'
+import { layout, card, inputStyle, primaryButton, secondaryButton, logoCircle, brandMark } from '../styles/common'
+import QRCode from 'qrcode'
+import collegeLogo from '../assets/IIT Ropar.png'
+export default function VisitorEntry() {
+  const navigate = useNavigate()
+  const [guestName, setGuestName] = useState('')
+  const [guestContact, setGuestContact] = useState('')
+  const [extraFields, setExtraFields] = useState<{ key: string; value: string }[]>([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
+
+  const logout = () => {
+    try {
+      window.localStorage.removeItem('token')
+    } catch {
+      // ignore
+    }
+    navigate('/', { replace: true })
+  }
+
+  const addField = () => setExtraFields((prev) => [...prev, { key: '', value: '' }])
+  const updateField = (i: number, field: 'key' | 'value', val: string) => {
+    setExtraFields((prev) => {
+      const next = [...prev]
+      next[i] = { ...next[i], [field]: val }
+      return next
+    })
+  }
+  const removeField = (i: number) =>
+    setExtraFields((prev) => prev.filter((_, j) => j !== i))
+
+  const downloadQr = () => {
+    if (!qrDataUrl) return
+    const safeName = guestName.replace(/[^\w\-]+/g, '_').slice(0, 40) || 'visitor'
+    const link = document.createElement('a')
+    link.href = qrDataUrl
+    link.download = `visitor-qr-${safeName}-${Date.now()}.png`
+    link.rel = 'noopener'
+    link.click()
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setInviteMessage('')
+    setQrDataUrl('')
+    setLoading(true)
+    const body: InviteBody = {
+      guest_name: guestName,
+      guest_contact_number: guestContact,
+    }
+    for (const f of extraFields) {
+      const k = f.key.trim()
+      if (!k) continue
+      body[k] = f.value
+    }
+    try {
+      const result = await invite(body)
+      if (!result?.approved) {
+        setError(result?.error ?? 'Invite not approved')
+        return
+      }
+
+      if (result.qrCode) {
+        setQrDataUrl(result.qrCode)
+      } else {
+        const qrPayload = {
+          type: 'visitor_entry',
+          issued_at: Date.now(),
+          ...body,
+        }
+        const qrUrl = await QRCode.toDataURL(JSON.stringify(qrPayload))
+        setQrDataUrl(qrUrl)
+      }
+      setInviteMessage(result.message ?? 'Entry submitted successfully. Show this QR code at the gate.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invite failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={layout}>
+      <div
+        style={{
+          ...card,
+          minHeight: '90vh',
+          position: 'relative',
+        }}
+      >
+        <button 
+          type="button" 
+          style={{ 
+            ...secondaryButton, 
+            position: 'absolute',
+            top: '1.5rem',
+            right: '2rem',
+          }} 
+          onClick={logout}
+        >
+          Log out
+        </button>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            columnGap: '3rem',
+            alignItems: 'flex-start',
+            width: '100%',
+            minHeight: '74vh',
+            paddingTop: '2rem',
+          }}
+        >
+          {/* Left: form */}
+          <div>
+            <div style={{ ...brandMark, marginBottom: '3rem' }}>HOSTEL SECURITY</div>
+            <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              Visitor Entry
+            </h1>
+            <p style={{ fontSize: '1rem', color: '#9ca3af', marginBottom: '1.5rem' }}>
+              Invite a guest. Optional key-value fields
+              (e.g. vehicle number).
+            </p>
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gap: '0.9rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ fontSize: '0.9rem', color: '#e5e7eb' }}>Guest name</label>
+              <input
+                type="text"
+                required
+                placeholder="Guest full name"
+                style={inputStyle}
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ fontSize: '0.9rem', color: '#e5e7eb' }}>Guest contact number</label>
+              <input
+                type="tel"
+                required
+                placeholder="Contact number"
+                style={inputStyle}
+                value={guestContact}
+                onChange={(e) => setGuestContact(e.target.value)}
+              />
+            </div>
+            {extraFields.map((f, i) => (
+              <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Key (e.g. vehicle)"
+                  style={{ ...inputStyle, flex: 1 }}
+                  value={f.key}
+                  onChange={(e) => updateField(i, 'key', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Value"
+                  style={{ ...inputStyle, flex: 1 }}
+                  value={f.value}
+                  onChange={(e) => updateField(i, 'value', e.target.value)}
+                />
+                <button type="button" style={secondaryButton} onClick={() => removeField(i)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button type="button" style={secondaryButton} onClick={addField}>
+              Add key-value field
+            </button>
+          </div>
+          {error && <p style={{ color: '#f87171', marginBottom: '1rem' }}>{error}</p>}
+          <button type="submit" style={primaryButton} disabled={loading}>
+            {loading ? 'Submitting…' : 'Submit entry'}
+          </button>
+        </form>
+        {inviteMessage && (
+          <p style={{ color: '#4ade80', marginTop: '1rem', marginBottom: '0.75rem' }}>{inviteMessage}</p>
+        )}
+        {qrDataUrl && (
+          <div style={{ marginTop: '0.5rem', display: 'grid', gap: '0.5rem', justifyItems: 'start' }}>
+            <img
+              src={qrDataUrl}
+              alt="Visitor entry QR code"
+              style={{ width: 220, height: 220, background: '#fff', padding: 8, borderRadius: 8 }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" style={primaryButton} onClick={downloadQr}>
+                Download QR (PNG)
+              </button>
+            </div>
+            <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
+              Use the QR from the server when available — it includes hostel and host details for the gate.
+            </p>
+          </div>
+        )}
+          </div>
+          
+          {/* Right: logo */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <img src={collegeLogo} alt="College logo" style={logoCircle} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,118 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useNotificationsWebSocket } from '../hooks/useNotificationsWebSocket'
+import { fetchPreviousNotifications } from '../api/endpoints'
+import { NotificationCard } from '../components/NotificationCard'
+import collegeLogo from '../assets/IIT Ropar.png'
+import { layout, card, secondaryButton, logoCircle, brandMark } from '../styles/common'
+
+export default function Notifications() {
+  const { messages, connected } = useNotificationsWebSocket()
+  const [previous, setPrevious] = useState<unknown[]>([])
+  const [k, setK] = useState(20)
+  const [loading, setLoading] = useState(false)
+
+  const loadPrevious = async () => {
+    setLoading(true)
+    try {
+      const res = await fetchPreviousNotifications({ k })
+      const list = Array.isArray(res)
+        ? res
+        : (res as { notifications?: unknown[] })?.notifications ?? []
+      setPrevious(list)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPrevious()
+  }, [])
+
+  const all = [...messages, ...previous]
+
+  return (
+    <div style={layout}>
+      <div
+        style={{
+          ...card,
+          minHeight: '90vh',
+          position: 'relative',
+        }}
+      >
+        <Link 
+          to="/admin" 
+          style={{ 
+            ...secondaryButton, 
+            textDecoration: 'none',
+            position: 'absolute',
+            top: '1.5rem',
+            right: '2rem',
+          }}
+        >
+          ← Back
+        </Link>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            columnGap: '3rem',
+            alignItems: 'flex-start',
+            width: '100%',
+            minHeight: '74vh',
+            paddingTop: '2rem',
+          }}
+        >
+          {/* Left: text + buttons */}
+          <div>
+            <div style={{ ...brandMark, marginBottom: '3rem' }}>HOSTEL SECURITY</div>
+            <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>Notifications</h1>
+            <p style={{ fontSize: '1rem', color: '#9ca3af', marginBottom: '1rem' }}>
+              People entering (own or visitor). WebSocket (port 3000) + POST /fetch-previous-notifications (previous k).
+            </p>
+            <p style={{ marginBottom: '1rem' }}>
+              WebSocket:{' '}
+              <span style={{ color: connected ? '#4ade80' : '#f87171' }}>
+                {connected ? 'Connected' : 'Disconnected'}
+              </span>
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <input
+                type="number"
+                value={k}
+                onChange={(e) => setK(Number(e.target.value))}
+                style={{ width: 60, padding: '0.25rem', marginRight: '0.5rem' }}
+              />
+              <button
+                type="button"
+                style={secondaryButton}
+                onClick={loadPrevious}
+                disabled={loading}
+              >
+                Fetch previous k notifications
+              </button>
+            </div>
+            <div style={{ maxHeight: 480, overflow: 'auto' }}>
+              {all.length === 0 && !loading && <p style={{ color: '#9ca3af' }}>No notifications yet.</p>}
+              {all.map((msg, i) => {
+                const key =
+                  typeof msg === 'object' &&
+                  msg !== null &&
+                  '_id' in msg &&
+                  (msg as { _id?: unknown })._id != null
+                    ? String((msg as { _id: unknown })._id)
+                    : `n-${i}-${typeof msg === 'object' && msg !== null && 'message' in msg ? String((msg as { message?: unknown }).message).slice(0, 24) : ''}`
+                return <NotificationCard key={key} item={msg} />
+              })}
+            </div>
+          </div>
+
+          {/* Right: logo */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+            <img src={collegeLogo} alt="College logo" style={logoCircle} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
